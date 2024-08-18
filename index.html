@@ -1,0 +1,256 @@
+<html>
+
+	<head>
+		<title>Protect this house</title>
+		<style>
+			canvas {
+				border: 2px solid #0d5f55;
+				cursor: crosshair;
+				background-color: #00bf97;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div style="display:flex;flex-direction: column; width: 600px; margin:auto;">
+			<h3>score: <span id="score">0</span></h3>
+			<canvas id="bg" width="600" height="600" onmousemove="move(event)">
+			</canvas>
+			<p> w,a,s,d to move, space to jump, click to shoot</p>
+		</div>
+
+		<script>
+			const canvas = document.getElementById("bg");
+			const ctx = canvas.getContext("2d");
+			let dots = [];
+			const playerPosition = [200, 560];
+			let syncTimer = 0;
+			let abilityToJump = 100;
+			const baddies = [];
+			let score = 0;
+			let alive = true;
+			let helpers = [];
+			let missles = [];
+			let facingLeft = true;
+			let onWall = false;
+
+			function draw() {
+				ctx.clearRect(0, 0, 600, 600);
+				bg_image = new Image();
+				bg_image.src = 'bg2.png';
+				ctx.drawImage(bg_image, 0, 0, 300, 300, 0, 0, 600, 600);
+
+				if (dots.length > 0) {
+					ctx.beginPath();
+					ctx.moveTo(playerPosition[0] + 24, playerPosition[1] + 25)
+					ctx.lineWidth = 10;
+					ctx.lineTo(dots.at(-1)[0], dots.at(-1)[1]);
+					ctx.strokeStyle = "rgb(255 255 255)";
+					ctx.stroke();
+				}
+
+				//move character based on inputs
+				if (key["s"]) { playerPosition[1] += 5; }
+				if (key["w"]) { playerPosition[1] -= 2; }
+				if (key["a"]) { playerPosition[0] -= 4; facingLeft = true }
+				if (key["d"]) { playerPosition[0] += 4; facingLeft = false }
+				if (key[" "] && abilityToJump >= 100) {
+					playerPosition[1] -= 300;
+					if (playerPosition[1] < 20) { playerPosition[1] = 20; }
+					abilityToJump = 0
+				}
+
+				// falling
+				if (playerPosition[1] >= 530) {
+					playerPosition[1] = 530;
+					onWall = false;
+				} else {
+					if (playerPosition[0] < 20 && key["a"]) {
+						playerPosition[0] = 20;
+						playerPosition[1] += 1;
+						abilityToJump += 1;
+						onWall = true;
+					} else if (playerPosition[0] > 540 && key["d"]) {
+						playerPosition[1] += 1;
+						abilityToJump += 1;
+						onWall = true;
+					} else {
+						playerPosition[1] += 4;
+					}
+				}
+
+				// left and right boundries
+				if (playerPosition[0] < 20) { playerPosition[0] = 20 }
+				if (playerPosition[0] > 540) { playerPosition[0] = 540 }
+
+				// draw player
+				// ctx.fillStyle = `rgb(${abilityToJump * 2.5} ${abilityToJump * 2.5} ${abilityToJump * 2.5})`;
+				// ctx.fillRect(playerPosition[0], playerPosition[1], 40, 40)
+
+				base_image = new Image();
+				base_image.src = 'guy-sheet.png';
+				if (facingLeft && alive) {
+					if (onWall) {
+						ctx.drawImage(base_image, 0, 40, 40, 40, playerPosition[0], playerPosition[1], 40, 40);
+					} else {
+						ctx.drawImage(base_image, 0, 0, 40, 40, playerPosition[0], playerPosition[1], 40, 40);
+					}
+				} else if (!facingLeft && alive) {
+					if (onWall) {
+						ctx.drawImage(base_image, 40, 40, 40, 40, playerPosition[0], playerPosition[1], 40, 40);
+					} else {
+						ctx.drawImage(base_image, 40, 0, 40, 40, playerPosition[0], playerPosition[1], 40, 40);
+					}
+				} else {
+					ctx.drawImage(base_image, 0, 80, 40, 40, playerPosition[0], playerPosition[1], 40, 40);
+				}
+				if (abilityToJump < 100) {
+					abilityToJump += 1
+				}
+
+				// spawn baddies
+				if (syncTimer % 36 == 0 && Math.random() > .5) {
+					baddies.push([Math.floor(Math.random() * 600), Math.floor(Math.random() * 200)])
+				}
+				if (score > 40 && syncTimer % 36 == 0 && Math.random() > .6) {
+					console.log("incomeing")
+					if (Math.random() > .5) {
+						missles.push([599, Math.floor(Math.random() * 600), true])
+					} else {
+						missles.push([1, Math.floor(Math.random() * 600), false])
+					}
+				}
+
+				if (alive) {
+					for (let i = 0; i < helpers.length; i++) {
+						const radiusForHelpers = 70 * ((i % 3) + 1)
+						const helperPositionAngle = (syncTimer / 10 * (i + 1)) % 360
+						helpers[i] = [
+							playerPosition[0] + 20 + (Math.sin(helperPositionAngle) * radiusForHelpers),
+							playerPosition[1] + 20 + (Math.cos(helperPositionAngle) * radiusForHelpers)
+						]
+						ctx.beginPath();
+						ctx.arc(helpers[i][0], helpers[i][1], 5, 0, 2 * Math.PI);
+						ctx.fillStyle = "white";
+						ctx.fill();
+						baddies.forEach((baddie, index, object) => {
+							if (isClose(helpers[i], baddie, 10)) {
+								hit(object, index)
+							}
+						});
+					}
+				}
+
+				missles.forEach((missle, index, object) => {
+					ctx.fillStyle = "rgb(10 0 0)";
+					ctx.fillRect(missle[0], missle[1], 50, 5)
+					if (dots.length > 0 && isClose(dots.at(-1), missle, 20)) {
+						hit(object, index)
+					}
+
+					if (missle[2]) {
+						missle[0] -= 6;
+						if (missle[0] < 0) { object.splice(index, 1); }
+					} else {
+						missle[0] += 6;
+						if (missle[0] > 600) { object.splice(index, 1); }
+
+					}
+					if (isClose(playerPosition, missle, 25)) {
+						alive = false
+					}
+				})
+
+				if (alive) {
+					baddies.forEach((baddie, index, object) => {
+						ctx.fillStyle = `rgb(200 0 0)`;
+						if (baddie[1] <= 530) {
+							ctx.fillRect(baddie[0] + 5, baddie[1], 10, 50)
+						} else {
+							ctx.fillRect(baddie[0], baddie[1], 30, 30)
+						}
+						if (dots.length > 0 && isClose(dots.at(-1), baddie, 25)) {
+							hit(object, index)
+						}
+
+						if (playerPosition[0] + 5 < baddie[0] && baddie[1] >= 530) {
+							baddie[0] -= 1;
+							baddie[1] = 540;
+						} else if (playerPosition[0] + 5 > baddie[0] && baddie[1] >= 530) {
+							baddie[0] += 1;
+							baddie[1] = 540;
+						}
+
+						if (baddie[1] < 570) {
+							baddie[1] += 4;
+						}
+						if (isClose(playerPosition, baddie, 25)) {
+							alive = false
+						}
+					});
+				}
+
+				// game timing stuff
+				if (syncTimer >= 3600) {
+					syncTimer = 0;
+				} else {
+					syncTimer += 1;
+					dots = dots.splice(1)
+				}
+
+				if (!alive) {
+					ctx.fillStyle = `rgb(50 0 0)`;
+					ctx.font = "42px sans-serif";
+					ctx.fillText(`You Died, Final Score: ${score}`, 50, 60);
+				}
+			}
+
+			function hit(object, index) {
+				if (alive) {
+					score += 1;
+					document.querySelector("#score").innerHTML = score;
+					console.log("hit")
+					object.splice(index, 1);
+					if (score % 10 == 0) {
+						helpers.push([0, 0])
+					}
+				}
+			}
+
+
+			function move(e) {
+				let onEnemy = false
+				if (onEnemy) {
+					ctx.beginPath();
+					ctx.arc(e.offsetX, e.offsetY, 10, 0, Math.PI * 4, true);
+					ctx.stroke();
+				}
+			}
+
+			canvas.addEventListener('click', function (e) {
+				if (alive) { dots.push([e.offsetX, e.offsetY]) }
+			}, false);
+
+			const key = {
+				'w': false,
+				'a': false,
+				's': false,
+				'd': false,
+				' ': false,
+			}
+			window.addEventListener("keydown", function (e) {
+				if (key[e.key.toLowerCase()] != undefined && alive) {
+					key[e.key.toLowerCase()] = true;
+				}
+			});
+
+			window.addEventListener('keyup', (e) => { key[e.key.toLowerCase()] = false; });
+
+			window.addEventListener("load", draw)
+			setInterval(draw, 10);
+
+			function isClose(a, b, accuracy) { return Math.abs(a[0] - b[0]) < accuracy && Math.abs(a[1] - b[1]) < accuracy; }
+		</script>
+	</body>
+
+</html>
